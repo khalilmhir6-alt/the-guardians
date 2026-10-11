@@ -9,5 +9,6 @@ data/frames/
 data/dfki_test/
 *.zip
 models/*.pt
+!models/best.pt
 models/*.onnx
 .DS_Store

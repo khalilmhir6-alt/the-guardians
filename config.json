@@ -1,5 +1,5 @@
 {
-  "detector": "fake",
+  "detector": "yolo",
   "link": {
     "host": "127.0.0.1",
     "listen": 9000,
@@ -55,11 +55,15 @@
     "imgsz": 640,
     "conf_threshold": 0.25,
     "cpu_threads": 2,
+    "preprocess": "clahe",
+    "clahe_clip_limit": 3.0,
+    "clahe_tile_grid": 8,
     "test_images": "data/dfki_test/images",
     "test_labels": "data/dfki_test/labels"
   },
   "paths": {
     "frames_dir": "data/frames",
+    "feed_video": "samples/rover_feed.mp4",
     "poses_csv": "data/poses.csv",
     "rocks_csv": "data/rocks.csv",
     "camera_json": "data/camera.json",

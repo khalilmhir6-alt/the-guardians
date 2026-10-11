@@ -1,49 +1,23 @@
-# C.R.A.T.E.R. - sample run: last good end-to-end run
+# C.R.A.T.E.R. - sample run: last good end-to-end run (trained YOLO model)
 # command: python run_all.py --duration 60 --no-browser
-# detector=fake, synthetic scene (data/ not generated). Rover-side log of the 60 s run.
-# (A separate 10 s run confirmed the YOLO->FakeDetector fallback with no weights file.)
-# Earth accepted 36 log lines (1 header + 35 packets) in the same run.
+# detector=yolo, CLAHE anti-glare, 121 frames from the rover feed; Earth logged 49 packets.
+# (Trimmed: startup + first confirmations + status + final stats.)
 
-2026-10-11 05:13:55,479 INFO    crater.rover: rover starting (detector=fake)
-2026-10-11 05:13:55,479 WARNING crater.detector: data/ not generated yet - FakeDetector using a synthetic scene
-2026-10-11 05:13:55,479 INFO    crater.detector: FakeDetector ready: 23 hazards, 120 frames, synthetic=True
-2026-10-11 05:13:55,482 INFO    crater.rover: frames available: 0
-2026-10-11 05:13:56,637 INFO    crater.tracker: track 3 confirmed as rock at (1.37, 2.99) r=3.2m err=0.18m class=0
-2026-10-11 05:13:56,637 INFO    crater.tracker: track 5 confirmed as rock at (-2.97, 4.40) r=5.2m err=0.48m class=0
-2026-10-11 05:13:56,637 INFO    crater.tracker: track 8 confirmed as rock at (0.82, 3.11) r=3.1m err=0.17m class=0
-2026-10-11 05:13:56,637 INFO    crater.tracker: track 10 confirmed as rock at (-0.14, 6.10) r=6.0m err=0.64m class=1
-2026-10-11 05:13:56,637 INFO    crater.tracker: track 15 confirmed as rock at (0.46, 3.71) r=3.6m err=0.24m class=0
-2026-10-11 05:13:56,637 INFO    crater.tracker: track 19 confirmed as crater at (-2.70, 6.36) r=6.8m err=0.82m class=1
-2026-10-11 05:13:56,639 INFO    crater.tracker: track 21 confirmed as crater at (1.74, 7.46) r=7.6m err=1.01m class=2
-2026-10-11 05:13:56,639 INFO    crater.sender: hazard rock (1.37, 2.99) conf=0.82 err=0 -> 3 copies
-2026-10-11 05:13:56,639 INFO    crater.sender: hazard rock (-2.97, 4.40) conf=0.84 err=0 -> 3 copies
-2026-10-11 05:13:56,639 INFO    crater.sender: hazard rock (0.82, 3.11) conf=0.83 err=0 -> 3 copies
-2026-10-11 05:13:56,639 INFO    crater.sender: hazard rock (-0.14, 6.10) conf=0.85 err=1 -> 3 copies
-2026-10-11 05:13:56,639 INFO    crater.sender: hazard rock (0.46, 3.71) conf=0.84 err=0 -> 3 copies
-2026-10-11 05:13:56,639 INFO    crater.sender: hazard crater (-2.70, 6.36) conf=0.87 err=1 -> 3 copies
-2026-10-11 05:13:56,639 INFO    crater.sender: hazard crater (1.74, 7.46) conf=0.84 err=2 -> 3 copies
-2026-10-11 05:13:57,125 INFO    crater.tracker: track 23 confirmed as rock at (3.36, 7.19) r=7.8m err=1.06m class=2
-2026-10-11 05:13:57,125 INFO    crater.tracker: track 25 confirmed as rock at (2.45, 4.12) r=4.6m err=0.38m class=0
-2026-10-11 05:13:57,125 INFO    crater.sender: hazard rock (3.36, 7.19) conf=0.83 err=2 -> 3 copies
-2026-10-11 05:13:57,125 INFO    crater.sender: hazard rock (2.45, 4.12) conf=0.87 err=0 -> 3 copies
-2026-10-11 05:13:58,127 INFO    crater.tracker: track 29 confirmed as rock at (-1.56, 2.48) r=2.6m err=0.12m class=0
-2026-10-11 05:13:58,127 INFO    crater.sender: hazard rock (-1.56, 2.48) conf=0.84 err=0 -> 3 copies
-2026-10-11 05:14:00,132 INFO    crater.tracker: track 13 confirmed as rock at (-2.94, 7.87) r=8.0m err=1.13m class=2
-2026-10-11 05:14:00,132 INFO    crater.sender: hazard rock (-2.94, 7.87) conf=0.86 err=2 -> 3 copies
-2026-10-11 05:14:05,627 INFO    crater.tracker: track 9 confirmed as rock at (-1.88, 8.79) r=8.0m err=1.13m class=2
-2026-10-11 05:14:05,628 INFO    crater.sender: hazard rock (-1.88, 8.79) conf=0.84 err=2 -> 3 copies
-2026-10-11 05:14:05,628 INFO    crater.rover: status t=10s frames=20 tracker={'confirmed': 12, 'dropped': 33, 'fp_suppressed': 28, 'duplicate_suppressed': 4, 'range_gated': 180} sender={'sent': 25, 'hazards_sent': 22, 'heartbeats_sent': 3, 'heartbeats_dropped': 2, 'hazards_dropped': 0}
-2026-10-11 05:14:07,131 INFO    crater.tracker: track 59 confirmed as rock at (-4.01, 8.33) r=7.3m err=0.95m class=1
-2026-10-11 05:14:07,131 INFO    crater.sender: hazard rock (-4.01, 8.33) conf=0.84 err=1 -> 3 copies
-2026-10-11 05:14:10,637 INFO    crater.tracker: track 70 confirmed as rock at (-3.79, 9.41) r=7.5m err=1.00m class=2
-2026-10-11 05:14:10,637 INFO    crater.sender: hazard rock (-3.79, 9.41) conf=0.85 err=2 -> 3 copies
-2026-10-11 05:14:15,646 INFO    crater.rover: status t=20s frames=40 tracker={'confirmed': 14, 'dropped': 68, 'fp_suppressed': 46, 'duplicate_suppressed': 16, 'range_gated': 268} sender={'sent': 45, 'hazards_sent': 38, 'heartbeats_sent': 7, 'heartbeats_dropped': 3, 'hazards_dropped': 0}
-2026-10-11 05:14:20,654 INFO    crater.tracker: track 20 confirmed as crater at (-0.97, 10.47) r=8.0m err=1.12m class=2
-2026-10-11 05:14:20,654 INFO    crater.sender: hazard crater (-0.97, 10.47) conf=0.85 err=2 -> 3 copies
-2026-10-11 05:14:23,642 INFO    crater.tracker: track 85 confirmed as rock at (2.09, 13.14) r=8.0m err=1.12m class=2
-2026-10-11 05:14:23,642 INFO    crater.sender: hazard rock (2.09, 13.14) conf=0.86 err=2 -> 3 copies
-2026-10-11 05:14:25,645 INFO    crater.rover: status t=30s frames=60 tracker={'confirmed': 16, 'dropped': 79, 'fp_suppressed': 52, 'duplicate_suppressed': 16, 'range_gated': 321} sender={'sent': 56, 'hazards_sent': 44, 'heartbeats_sent': 12, 'heartbeats_dropped': 3, 'hazards_dropped': 0}
-2026-10-11 05:14:35,656 INFO    crater.rover: status t=40s frames=80 tracker={'confirmed': 16, 'dropped': 86, 'fp_suppressed': 54, 'duplicate_suppressed': 19, 'range_gated': 341} sender={'sent': 65, 'hazards_sent': 48, 'heartbeats_sent': 17, 'heartbeats_dropped': 3, 'hazards_dropped': 0}
-2026-10-11 05:14:45,666 INFO    crater.rover: status t=50s frames=100 tracker={'confirmed': 16, 'dropped': 93, 'fp_suppressed': 57, 'duplicate_suppressed': 21, 'range_gated': 355} sender={'sent': 70, 'hazards_sent': 48, 'heartbeats_sent': 22, 'heartbeats_dropped': 3, 'hazards_dropped': 0}
-2026-10-11 05:14:55,676 INFO    crater.rover: duration reached, stopping
-2026-10-11 05:14:55,676 INFO    crater.rover: rover stopped: frames=120 tracker={'confirmed': 16, 'dropped': 96, 'fp_suppressed': 57, 'duplicate_suppressed': 23, 'range_gated': 355} sender={'sent': 74, 'hazards_sent': 48, 'heartbeats_sent': 26, 'heartbeats_dropped': 3, 'hazards_dropped': 0}
+2026-10-11 06:04:30,387 INFO    crater.rover: rover starting (detector=yolo)
+2026-10-11 06:04:32,910 INFO    crater.detector: YoloDetector loaded best.pt (pt, CPU, 2 threads, preprocess=clahe) names={0: 'boulder', 1: 'rocks'} -> {0: 'rock', 1: 'rock'}
+2026-10-11 06:04:32,913 INFO    crater.rover: frames available: 121
+2026-10-11 06:04:35,861 INFO    crater.tracker: track 1 confirmed as rock at (0.20, 0.41) r=0.4m err=0.01m class=0
+2026-10-11 06:04:35,861 INFO    crater.tracker: track 2 confirmed as rock at (-0.42, 0.61) r=0.7m err=0.01m class=0
+2026-10-11 06:04:35,862 INFO    crater.tracker: track 5 confirmed as rock at (-1.75, 2.57) r=3.0m err=0.16m class=0
+2026-10-11 06:04:35,862 INFO    crater.tracker: track 8 confirmed as rock at (2.19, 3.12) r=3.7m err=0.25m class=0
+2026-10-11 06:04:35,862 INFO    crater.sender: hazard rock (0.20, 0.41) conf=0.80 err=0 -> 3 copies
+2026-10-11 06:04:35,862 INFO    crater.sender: hazard rock (-0.42, 0.61) conf=0.79 err=0 -> 3 copies
+2026-10-11 06:04:35,862 INFO    crater.sender: hazard rock (-1.75, 2.57) conf=0.66 err=0 -> 3 copies
+2026-10-11 06:04:35,864 INFO    crater.sender: hazard rock (2.19, 3.12) conf=0.47 err=0 -> 3 copies
+2026-10-11 06:04:43,351 INFO    crater.rover: status t=8s frames=17 tracker={'confirmed': 10, 'dropped': 34, 'fp_suppressed': 20, 'duplicate_suppressed': 16, 'range_gated': 5} sender={'sent': 21, 'hazards_sent': 17, 'heartbeats_sent': 4, 'heartbeats_dropped': 0, 'hazards_dropped': 0}
+2026-10-11 06:04:53,360 INFO    crater.rover: status t=18s frames=37 tracker={'confirmed': 20, 'dropped': 115, 'fp_suppressed': 79, 'duplicate_suppressed': 38, 'range_gated': 40} sender={'sent': 51, 'hazards_sent': 44, 'heartbeats_sent': 7, 'heartbeats_dropped': 1, 'hazards_dropped': 0}
+2026-10-11 06:05:03,377 INFO    crater.rover: status t=28s frames=57 tracker={'confirmed': 23, 'dropped': 158, 'fp_suppressed': 108, 'duplicate_suppressed': 45, 'range_gated': 42} sender={'sent': 72, 'hazards_sent': 61, 'heartbeats_sent': 11, 'heartbeats_dropped': 2, 'hazards_dropped': 0}
+2026-10-11 06:05:13,379 INFO    crater.rover: status t=38s frames=77 tracker={'confirmed': 27, 'dropped': 177, 'fp_suppressed': 114, 'duplicate_suppressed': 50, 'range_gated': 42} sender={'sent': 90, 'hazards_sent': 74, 'heartbeats_sent': 16, 'heartbeats_dropped': 2, 'hazards_dropped': 0}
+2026-10-11 06:05:23,419 INFO    crater.rover: status t=48s frames=97 tracker={'confirmed': 32, 'dropped': 203, 'fp_suppressed': 128, 'duplicate_suppressed': 55, 'range_gated': 52} sender={'sent': 109, 'hazards_sent': 88, 'heartbeats_sent': 21, 'heartbeats_dropped': 2, 'hazards_dropped': 0}
+2026-10-11 06:05:33,356 INFO    crater.rover: duration reached, stopping
+2026-10-11 06:05:33,356 INFO    crater.rover: rover stopped: frames=117 tracker={'confirmed': 36, 'dropped': 228, 'fp_suppressed': 135, 'duplicate_suppressed': 74, 'range_gated': 52} sender={'sent': 126, 'hazards_sent': 101, 'heartbeats_sent': 25, 'heartbeats_dropped': 2, 'hazards_dropped': 0}

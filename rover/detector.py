@@ -167,19 +167,29 @@ class YoloDetector(Detector):
     onnxruntime, using `cpu_threads` threads. Same output format as
     FakeDetector.
 
+    The trained model was fit on CLAHE glare-corrected frames, so the same
+    anti-glare preprocessing (CLAHE on the L channel of LAB) is applied here
+    before inference, controlled by `preprocess` ("clahe" or "none").
+
     Class mapping is by NAME from the model's own names list, never by
-    index: the DFKI-trained model reports 0=crater, 1=rock, but we still
-    read the names to be safe against a different ordering. Unknown names
-    are ignored.
+    index: the trained model reports 0=boulder, 1=rocks - both are rock-like
+    - and we still read the names to be safe against a different ordering.
+    Unknown names are ignored.
     """
 
     def __init__(self, weights: str, cam: dict, imgsz: int = 640,
-                 conf_threshold: float = 0.25, threads: int = 2):
+                 conf_threshold: float = 0.25, threads: int = 2,
+                 preprocess: str = "clahe", clahe_clip_limit: float = 3.0,
+                 clahe_tile_grid: int = 8):
         self.conf_threshold = conf_threshold
         self.imgsz = int(imgsz)
         self.camera = cam
         self.size = (cam["width_px"], cam["height_px"])
         self.weights = str(weights)
+        self.preprocess = (preprocess or "none").lower()
+        self.clahe_clip_limit = float(clahe_clip_limit)
+        self.clahe_tile_grid = int(clahe_tile_grid)
+        self._clahe = None
         self.kind = None
         self.session = None
         self.model = None
@@ -218,8 +228,9 @@ class YoloDetector(Detector):
             raise ValueError(
                 f"{p.name} exposes no class names; refusing to map by index")
         self.id_to_cls = {i: self._map_name(n) for i, n in self.names.items()}
-        log.info("YoloDetector loaded %s (%s, CPU, %d threads) names=%s -> %s",
-                 p.name, self.kind, threads, self.names, self.id_to_cls)
+        log.info("YoloDetector loaded %s (%s, CPU, %d threads, preprocess=%s) "
+                 "names=%s -> %s", p.name, self.kind, threads,
+                 self.preprocess, self.names, self.id_to_cls)
 
     @staticmethod
     def _map_name(name):
@@ -245,7 +256,28 @@ class YoloDetector(Detector):
             log.warning("could not read ONNX class names: %s", e)
         return None
 
+    def _apply_preprocess(self, frame):
+        """CLAHE anti-glare on the L channel of LAB, matching training."""
+        if self.preprocess != "clahe":
+            return frame
+        import cv2
+        if self._clahe is None:
+            self._clahe = cv2.createCLAHE(
+                clipLimit=self.clahe_clip_limit,
+                tileGridSize=(self.clahe_tile_grid, self.clahe_tile_grid))
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        lab = cv2.merge((self._clahe.apply(l), a, b))
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
     def detect(self, frame, frame_idx=None):
+        if frame is None:
+            if not getattr(self, "_warned_none", False):
+                log.warning("YoloDetector got no frame (no frames on disk?) - "
+                            "returning no detections")
+                self._warned_none = True
+            return []
+        frame = self._apply_preprocess(frame)
         if self.kind == "pt":
             return self._detect_pt(frame)
         return self._detect_onnx(frame)
@@ -321,7 +353,10 @@ def make_detector(cfg: dict) -> Detector:
             return YoloDetector(y["weights"], cfg["camera"],
                                 y.get("imgsz", 640),
                                 y.get("conf_threshold", 0.25),
-                                y.get("cpu_threads", 2))
+                                y.get("cpu_threads", 2),
+                                y.get("preprocess", "clahe"),
+                                y.get("clahe_clip_limit", 3.0),
+                                y.get("clahe_tile_grid", 8))
         except Exception as e:  # noqa: BLE001
             log.warning("YOLO detector unavailable (%s); "
                         "falling back to FakeDetector", e)

@@ -44,6 +44,51 @@ def load_frame_paths(frames_dir: str):
     return sorted(p.glob("frame_*.png"))
 
 
+def ensure_frames(frames_dir: str, feed_video: str, count: int = 120,
+                  size: int = 640):
+    """Return frame paths, extracting them from the sample feed video the
+    first time if data/frames/ is empty. Keeps a fresh clone runnable with
+    the trained model without shipping 48 MB of PNGs.
+    """
+    existing = load_frame_paths(frames_dir)
+    if existing:
+        return existing
+    p = Path(frames_dir)
+    feed = Path(feed_video)
+    if not feed.is_absolute():
+        feed = Path(__file__).resolve().parent.parent / feed_video
+    if not feed.exists():
+        return []
+    try:
+        import cv2
+    except ImportError:
+        log.warning("no frames and no opencv to extract from %s", feed)
+        return []
+    cap = cv2.VideoCapture(str(feed))
+    if not cap.isOpened():
+        log.warning("could not open feed video %s", feed)
+        return []
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    step = max(1, round(total / count)) if count > 0 else 1
+    p.mkdir(parents=True, exist_ok=True)
+    log.info("data/frames empty - extracting frames from %s", feed)
+    i = saved = 0
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if i % step == 0:
+                saved += 1
+                cv2.imwrite(str(p / f"frame_{saved:04d}.png"),
+                            cv2.resize(frame, (size, size)))
+            i += 1
+    finally:
+        cap.release()
+    log.info("extracted %d frames from %s", saved, feed)
+    return load_frame_paths(frames_dir)
+
+
 def main():
     ap = argparse.ArgumentParser(description="C.R.A.T.E.R. rover")
     ap.add_argument("--config", default=None)
@@ -74,7 +119,9 @@ def main():
                     queue_size=rcfg["queue_size"])
     cam = cfg["camera"]
     fps = rcfg["fps"]
-    frame_paths = load_frame_paths(cfg["paths"]["frames_dir"])
+    frame_paths = ensure_frames(cfg["paths"]["frames_dir"],
+                                cfg["paths"].get("feed_video",
+                                                 "samples/rover_feed.mp4"))
     log.info("frames available: %d", len(frame_paths))
 
     cv2 = None

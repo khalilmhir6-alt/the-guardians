@@ -32,13 +32,19 @@ python -m venv .venv
 
 `run_all.py` starts link + Earth + rover as separate processes, restarts a crashed child
 (logged), streams frames -> dashboard, and stops everything on Ctrl+C or `--duration N`.
-Dashboard: <http://127.0.0.1:8080/>. With no model present the pipeline uses `FakeDetector`
-(synthetic scene) so it runs today. To use the real detector, put the trained weights at
-`config.json: yolo.weights` (`models/best.pt` by default; `.pt` loads via ultralytics,
-`.onnx` via onnxruntime, CPU only with `yolo.cpu_threads`) and set `"detector": "yolo"`.
-Classes are mapped **by name** from the model's own names list (`rock`/`crater`), never by
-index. If `"detector": "yolo"` but the weights are missing or fail to load, the rover logs
-a clear warning and falls back to `FakeDetector` - it never crashes.
+Dashboard: <http://127.0.0.1:8080/>.
+
+The rover reads 640x640 PNG frames from `data/frames/` and runs the trained YOLO model on
+CPU (`"detector": "yolo"`). Every frame is glare-corrected with **CLAHE** on the L channel
+of LAB (`clipLimit 3.0`, 8x8 tiles) *before* inference - the same preprocessing the model
+was trained with. The model reports classes `{0: boulder, 1: rocks}`; both map to the
+rover's `rock` class **by name**, never by index. If `data/frames/` is empty the rover
+extracts 121 frames from the committed sample feed `samples/rover_feed.mp4` on first run,
+so a fresh clone runs the model with no setup; if the weights are missing or fail to load,
+`make_detector` falls back to `FakeDetector` - it never crashes. Set
+`"detector": "fake"` to run the whole pipeline on the synthetic scene with no frames.
+
+To use a different rover video: `python tools\extract_frames.py <video.mp4>`.
 
 ## Decisions — real constraint → our choice → measured number
 
@@ -51,7 +57,8 @@ a clear warning and falls back to `FakeDetector` - it never crashes.
 | Detector emits false positives | Confirm a track after 3 consecutive hits | 1-frame FP produced **0** reports |
 | Pixel noise → position error | First-order error `(r²+z²)/z · δv/fy`, sent as a class so Earth can size the ring | vs ground truth mean **0.34 m**, max **1.93 m**; back-projection unit test **< 1e-14 m** |
 | Resources are bounded | Queue 64, drop oldest copy on overflow, log loudly, timeouts everywhere | **0** hazard copies dropped in a 60 s run |
-| Model order is unknown | Map classes by name from the model's own names list, never by index | DFKI model (0=crater, 1=rock) handled without hard-coding an index |
+| Model order is unknown | Map classes by name from the model's own names list, never by index | trained model reports `{0: boulder, 1: rocks}`; both mapped to `rock`, no hard-coded index |
+| Sun glare / harsh shadows | CLAHE anti-glare on LAB L-channel before inference, matching training | **15-30 rocks/frame** on the feed; 36 tracks confirmed, 101 hazards sent in a 60 s run |
 | Model may be absent at code freeze | `make_detector` catches a missing/failing load and falls back to `FakeDetector` (logged, never crashes) | rover ran 10 s with `"detector": "yolo"` and no weights, exit 0, fallback warning in the log |
 | Many hazards appear at once | Queue ordered by **due time**, not enqueue time | fixed a head-of-line stall that inflated mean arrival age **11.5 s → 1.12 s** |
 | Operator must read the map fast | Uncertainty ring, age fade (min 40%), auto-zoom, live hazard list | see dashboard section |
@@ -88,6 +95,20 @@ on CPU with `yolo.cpu_threads` at imgsz **640 and 416**, scoring predictions aga
 YOLO-format ground-truth labels in `data/dfki_test/labels` (IoU >= 0.5, class by name).
 Otherwise the group is written as `skipped: no model`.
 
+## Extra files
+
+- `tools/` keeps the standalone scripts for reference (not part of the judged pipeline):
+  `perception.py` (original YOLO + CLAHE + classical-CV-fallback class), `spatial.py`
+  (standalone pixel->ground projector + time-to-impact), `main.py` (video inference demo),
+  `demo_filter.py` (CLAHE before/after demo) and `extract_frames.py` (video -> `data/frames`).
+  The **CLAHE + YOLO** behaviour these implement is folded into `rover/detector.py` and used
+  live by the pipeline.
+- `samples/mission_telemetry.jsonl` is a short capture of the model's detections from a
+  standalone run (classes `rocks`/`boulder`), kept as evidence of the model output format.
+- `samples/rover_feed.mp4` is the rover video the pipeline extracts frames from.
+- `models/best.pt` is the trained model (~6.5 MB), committed so a fresh clone runs it
+  directly. `last.pt` and other weight files stay git-ignored; only `best.pt` is tracked.
+
 ## Known limits
 
 - **Flat-ground assumption:** the ray/plane intersection assumes local ground is `z = 0`;
@@ -97,9 +118,11 @@ Otherwise the group is written as `skipped: no model`.
 - **Over-merge:** the range-based merge radius (up to ~1.1 m at the 8 m gate) can absorb
   two distinct hazards that are genuinely closer than that; measured recall is 16/23
   unique hazards on the synthetic scene.
-- **Sim-to-real gap:** synthetic (or Blender-rendered) frames do not match the real
-  lighting/texture distribution; the detector is plug-and-play but untested on real data.
-- **No ice class:** the hazard taxonomy is rock / crater only.
+- **Sim-to-real gap:** the model runs on the real feed (15-30 detections/frame) but its
+  accuracy is not scored, because the feed ships without ground-truth labels; the model
+  was trained on the DFKI dataset, not on this footage.
+- **No ice class:** the hazard taxonomy is rock / crater only; the trained model only emits
+  rock-like classes (`rocks`, `boulder`).
 
 ## Dataset credit
 
