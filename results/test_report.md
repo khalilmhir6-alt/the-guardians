@@ -1,6 +1,6 @@
 # C.R.A.T.E.R. — automated test report
 
-Generated 2026-10-11T03:51:29Z · Python 3.12.7 · win32 · wall 0.1 s
+Generated 2026-10-11T04:15:06Z · Python 3.12.7 · win32 · wall 0.0 s
 
 **Data source for scene-dependent tests:** synthetic fallback (data/ not generated)
 
@@ -75,7 +75,7 @@ Source: **synthetic fallback (data/ not generated)** (fixed link seed).
 
 ## 6. Perception (CPU-only)
 
-Skipped: no models/best.onnx or .pt yet. Reported automatically once the model is dropped into `models/`.
+Skipped: no model. Reported automatically once the weights and `data/dfki_test/images` exist.
 
 ## Known limits
 

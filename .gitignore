@@ -1,9 +1,13 @@
 .venv/
 __pycache__/
 *.pyc
-logs/*
-!logs/.gitkeep
-data/frames/*.png
-models/*.onnx
+logs/*.log
+logs/*.csv
+logs/*.out
+logs/*.err
+data/frames/
+data/dfki_test/
+*.zip
 models/*.pt
+models/*.onnx
 .DS_Store

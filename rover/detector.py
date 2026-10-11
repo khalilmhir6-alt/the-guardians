@@ -13,6 +13,7 @@ import math
 import random
 from pathlib import Path
 
+from common.config import ROOT
 from rover.localize import project_point
 
 log = logging.getLogger("crater.detector")
@@ -162,24 +163,34 @@ class FakeDetector(Detector):
 
 
 class YoloDetector(Detector):
-    """YOLO on CPU only, 2 threads. Loads models/best.onnx (preferred, via
-    onnxruntime) or models/best.pt (via ultralytics). Same output format
-    as FakeDetector. Class 0 = rock, class 1 = crater.
+    """YOLO on CPU only. Loads a .pt via ultralytics or a .onnx via
+    onnxruntime, using `cpu_threads` threads. Same output format as
+    FakeDetector.
+
+    Class mapping is by NAME from the model's own names list, never by
+    index: the DFKI-trained model reports 0=crater, 1=rock, but we still
+    read the names to be safe against a different ordering. Unknown names
+    are ignored.
     """
 
-    CLASS_NAMES = {0: "rock", 1: "crater"}
-
-    def __init__(self, model_path: str, cam: dict, conf_threshold: float = 0.25,
-                 threads: int = 2):
+    def __init__(self, weights: str, cam: dict, imgsz: int = 640,
+                 conf_threshold: float = 0.25, threads: int = 2):
         self.conf_threshold = conf_threshold
+        self.imgsz = int(imgsz)
         self.camera = cam
-        self.size = (cam["width_px"], cam["height_px"])  # (w, h)
-        self.model_path = model_path
+        self.size = (cam["width_px"], cam["height_px"])
+        self.weights = str(weights)
         self.kind = None
         self.session = None
         self.model = None
+        self.names = None
 
-        p = Path(model_path)
+        p = Path(weights)
+        if not p.is_absolute():
+            p = ROOT / weights
+        if not p.exists():
+            raise FileNotFoundError(f"weights file not found: {p}")
+
         if p.suffix == ".onnx":
             import onnxruntime as ort
             so = ort.SessionOptions()
@@ -189,6 +200,7 @@ class YoloDetector(Detector):
                 str(p), sess_options=so,
                 providers=["CPUExecutionProvider"])
             self.input_name = self.session.get_inputs()[0].name
+            self.names = self._names_from_onnx_meta()
             self.kind = "onnx"
         elif p.suffix == ".pt":
             from ultralytics import YOLO
@@ -196,13 +208,42 @@ class YoloDetector(Detector):
             torch.set_num_threads(threads)
             self.model = YOLO(str(p))
             self.model.to("cpu")
+            self.names = {int(k): str(v) for k, v in self.model.names.items()}
             self.kind = "pt"
         else:
             raise FileNotFoundError(
-                f"no model at {model_path} (need .onnx or .pt); "
-                'set config "detector": "fake" until the model arrives')
-        log.info("YoloDetector loaded %s (%s, CPU, %d threads)",
-                 model_path, self.kind, threads)
+                f"unsupported weights {p} (need .pt or .onnx)")
+
+        if not self.names:
+            raise ValueError(
+                f"{p.name} exposes no class names; refusing to map by index")
+        self.id_to_cls = {i: self._map_name(n) for i, n in self.names.items()}
+        log.info("YoloDetector loaded %s (%s, CPU, %d threads) names=%s -> %s",
+                 p.name, self.kind, threads, self.names, self.id_to_cls)
+
+    @staticmethod
+    def _map_name(name):
+        """Map a model class name to our taxonomy by substring, by NAME."""
+        n = str(name).strip().lower()
+        if "crater" in n:
+            return "crater"
+        if "rock" in n or "stone" in n or "boulder" in n:
+            return "rock"
+        return None
+
+    def _names_from_onnx_meta(self):
+        """Ultralytics ONNX exports store names in custom metadata."""
+        import ast
+        try:
+            md = self.session.get_modelmeta().custom_metadata_map
+            raw = md.get("names")
+            if raw:
+                d = ast.literal_eval(raw)
+                if isinstance(d, dict):
+                    return {int(k): str(v) for k, v in d.items()}
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not read ONNX class names: %s", e)
+        return None
 
     def detect(self, frame, frame_idx=None):
         if self.kind == "pt":
@@ -210,9 +251,9 @@ class YoloDetector(Detector):
         return self._detect_onnx(frame)
 
     def _detect_pt(self, frame):
-        import numpy as np
-        results = self.model.predict(frame, imgsz=self.size, conf=self.conf_threshold,
-                                     device="cpu", verbose=False)
+        results = self.model.predict(frame, imgsz=self.imgsz,
+                                     conf=self.conf_threshold, device="cpu",
+                                     verbose=False)
         out = []
         for r in results:
             if r.boxes is None or len(r.boxes) == 0:
@@ -221,45 +262,68 @@ class YoloDetector(Detector):
             confs = r.boxes.conf.cpu().numpy()
             clss = r.boxes.cls.cpu().numpy().astype(int)
             for box, conf, c in zip(xyxy, confs, clss):
-                out.append({"cls": self.CLASS_NAMES.get(int(c), "rock"),
-                            "conf": float(conf),
+                cls = self.id_to_cls.get(int(c))
+                if cls is None:
+                    continue
+                out.append({"cls": cls, "conf": float(conf),
                             "box": [float(box[0]), float(box[1]),
                                     float(box[2]), float(box[3])]})
         return out
 
     def _detect_onnx(self, frame):
-        """YOLOv8-style single output [1, 4+nc, N] after letterbox resize."""
+        """YOLOv8-style single output [1, 4+nc, N] after resize + BGR->RGB."""
         import numpy as np
         import cv2
-        w, h = self.size
+        s = self.imgsz
         img = frame
-        if img.shape[0] != h or img.shape[1] != w:
-            img = cv2.resize(img, (w, h))
+        if img.shape[0] != s or img.shape[1] != s:
+            img = cv2.resize(img, (s, s))
         blob = img[:, :, ::-1].transpose(2, 0, 1)[None].astype(np.float32) / 255.0
         pred = self.session.run(None, {self.input_name: blob})[0][0]  # [4+nc, N]
-        num_cls = pred.shape[0] - 4
         boxes_xywh = pred[:4].T          # cx, cy, w, h in pixels
         scores_all = pred[4:].T          # [N, nc]
+        # scale boxes back to the camera frame
+        sx = self.size[0] / s
+        sy = self.size[1] / s
         out = []
         for (cx, cy, bw, bh), scores in zip(boxes_xywh, scores_all):
             c = int(scores.argmax())
             conf = float(scores[c])
             if conf < self.conf_threshold:
                 continue
-            out.append({"cls": self.CLASS_NAMES.get(c, "rock"), "conf": conf,
-                        "box": [cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2]})
+            cls = self.id_to_cls.get(c)
+            if cls is None:
+                continue
+            out.append({"cls": cls, "conf": conf,
+                        "box": [(cx - bw / 2) * sx, (cy - bh / 2) * sy,
+                                (cx + bw / 2) * sx, (cy + bh / 2) * sy]})
         return out
 
 
 def make_detector(cfg: dict) -> Detector:
-    """Build the detector selected by config.json 'detector'."""
+    """Build the detector selected by config.json 'detector'.
+
+    If 'yolo' is selected but the weights are missing or fail to load,
+    log a clear warning and fall back to the fake detector - never crash.
+    """
     paths = cfg["paths"]
-    kind = cfg.get("detector", "fake")
-    if kind == "fake":
+
+    def fake():
         return FakeDetector(paths["rocks_csv"], paths["poses_csv"],
                             paths["camera_json"], cfg.get("detector_fake", {}))
+
+    kind = cfg.get("detector", "fake")
+    if kind == "fake":
+        return fake()
     if kind == "yolo":
-        return YoloDetector(cfg["yolo"]["model_path"], cfg["camera"],
-                            cfg["yolo"].get("conf_threshold", 0.25),
-                            cfg["yolo"].get("threads", 2))
+        y = cfg["yolo"]
+        try:
+            return YoloDetector(y["weights"], cfg["camera"],
+                                y.get("imgsz", 640),
+                                y.get("conf_threshold", 0.25),
+                                y.get("cpu_threads", 2))
+        except Exception as e:  # noqa: BLE001
+            log.warning("YOLO detector unavailable (%s); "
+                        "falling back to FakeDetector", e)
+            return fake()
     raise ValueError(f'unknown detector "{kind}" (use "fake" or "yolo")')

@@ -33,8 +33,12 @@ python -m venv .venv
 `run_all.py` starts link + Earth + rover as separate processes, restarts a crashed child
 (logged), streams frames -> dashboard, and stops everything on Ctrl+C or `--duration N`.
 Dashboard: <http://127.0.0.1:8080/>. With no model present the pipeline uses `FakeDetector`
-(synthetic scene) so it runs today; dropping `models/best.onnx` in and setting
-`config.json: "detector": "yolo"` switches to the real detector with no other change.
+(synthetic scene) so it runs today. To use the real detector, put the trained weights at
+`config.json: yolo.weights` (`models/best.pt` by default; `.pt` loads via ultralytics,
+`.onnx` via onnxruntime, CPU only with `yolo.cpu_threads`) and set `"detector": "yolo"`.
+Classes are mapped **by name** from the model's own names list (`rock`/`crater`), never by
+index. If `"detector": "yolo"` but the weights are missing or fail to load, the rover logs
+a clear warning and falls back to `FakeDetector` - it never crashes.
 
 ## Decisions — real constraint → our choice → measured number
 
@@ -47,6 +51,8 @@ Dashboard: <http://127.0.0.1:8080/>. With no model present the pipeline uses `Fa
 | Detector emits false positives | Confirm a track after 3 consecutive hits | 1-frame FP produced **0** reports |
 | Pixel noise → position error | First-order error `(r²+z²)/z · δv/fy`, sent as a class so Earth can size the ring | vs ground truth mean **0.34 m**, max **1.93 m**; back-projection unit test **< 1e-14 m** |
 | Resources are bounded | Queue 64, drop oldest copy on overflow, log loudly, timeouts everywhere | **0** hazard copies dropped in a 60 s run |
+| Model order is unknown | Map classes by name from the model's own names list, never by index | DFKI model (0=crater, 1=rock) handled without hard-coding an index |
+| Model may be absent at code freeze | `make_detector` catches a missing/failing load and falls back to `FakeDetector` (logged, never crashes) | rover ran 10 s with `"detector": "yolo"` and no weights, exit 0, fallback warning in the log |
 | Many hazards appear at once | Queue ordered by **due time**, not enqueue time | fixed a head-of-line stall that inflated mean arrival age **11.5 s → 1.12 s** |
 | Operator must read the map fast | Uncertainty ring, age fade (min 40%), auto-zoom, live hazard list | see dashboard section |
 
@@ -76,8 +82,11 @@ Scene-dependent tests report their **data source** at the top of the report (cur
 synthetic fallback, because `data/` is produced later by `blender/make_scene.py`; when
 Blender data exists the same tests run against it with no code change).
 
-Perception FPS/RAM and per-class precision/recall are reported automatically once a model
-file exists in `models/`, and skipped with a printed reason otherwise.
+Perception FPS/RAM and per-class precision/recall are reported automatically only when
+`yolo.weights` exists **and** `data/dfki_test/images` is present; the group then measures
+on CPU with `yolo.cpu_threads` at imgsz **640 and 416**, scoring predictions against the
+YOLO-format ground-truth labels in `data/dfki_test/labels` (IoU >= 0.5, class by name).
+Otherwise the group is written as `skipped: no model`.
 
 ## Known limits
 

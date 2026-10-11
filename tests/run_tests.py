@@ -335,39 +335,107 @@ def test_end_to_end(seed=555):
 
 
 # ------------------------------------------------------------ 6. perception
-def test_perception():
-    onnx = ROOT / CFG["yolo"]["model_path"]
-    pt = onnx.with_suffix(".pt")
-    model = onnx if onnx.exists() else (pt if pt.exists() else None)
-    if model is None:
-        return {"status": "skipped", "reason": "no models/best.onnx or .pt yet"}
+def _iou_xyxy(a, b):
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0:
+        return 0.0
+    ua = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / ua if ua else 0.0
 
-    import numpy as np
+
+def _load_yolo_labels(labels_dir, stem, id_to_cls, w, h):
+    """YOLO format: `class_id cx cy bw bh` normalized -> (cls, xyxy px)."""
+    out = []
+    p = Path(labels_dir) / f"{stem}.txt"
+    if not p.exists():
+        return out
+    for line in p.read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        cid = int(float(parts[0]))
+        cls = id_to_cls.get(cid)
+        if cls is None:
+            continue
+        cx, cy, bw, bh = (float(parts[i]) for i in range(1, 5))
+        out.append((cls, [(cx - bw / 2) * w, (cy - bh / 2) * h,
+                          (cx + bw / 2) * w, (cy + bh / 2) * h]))
+    return out
+
+
+def test_perception():
+    y = CFG["yolo"]
+    weights = ROOT / y["weights"]
+    images_dir = ROOT / y["test_images"]
+    labels_dir = ROOT / y["test_labels"]
+    if not weights.exists() or not images_dir.exists():
+        return {"status": "skipped", "reason": "no model"}
+
+    import cv2
     import psutil
     from rover.detector import YoloDetector
-    det = YoloDetector(str(model), CAM, CFG["yolo"]["conf_threshold"],
-                       CFG["yolo"]["threads"])
-    frames = sorted((ROOT / "data" / "frames").glob("frame_*.png"))
-    if frames:
-        import cv2
-        imgs = [cv2.imread(str(f)) for f in frames[:30]]
-    else:
-        rng = np.random.default_rng(0)
-        imgs = [rng.integers(0, 255, (CAM["height_px"], CAM["width_px"], 3),
-                             dtype=np.uint8) for _ in range(30)]
+    det = YoloDetector(str(weights), CAM, y["imgsz"],
+                       y["conf_threshold"], y["cpu_threads"])
+
+    exts = ("*.png", "*.jpg", "*.jpeg")
+    imgs = sorted(f for e in exts for f in images_dir.glob(e))
+    if not imgs:
+        return {"status": "skipped", "reason": "no model"}
+
     proc = psutil.Process()
-    out = {}
-    for size in (640, 416):
-        # (re)size input by feeding frames at that resolution
-        n = 0
+    out = {"status": "measured", "cpu_threads": y["cpu_threads"],
+           "images": len(imgs), "weights": y["weights"],
+           "classes": det.names}
+    for imgsz in (640, 416):
+        det.imgsz = imgsz
+        peak = 0
         t0 = time.perf_counter()
-        for img in imgs:
-            det.detect(img)
-            n += 1
+        tp = fp = fn = 0
+        per_cls = {}
+        for img_path in imgs:
+            frame = cv2.imread(str(img_path))
+            if frame is None:
+                continue
+            ih, iw = frame.shape[:2]
+            gts = _load_yolo_labels(labels_dir, img_path.stem,
+                                    det.id_to_cls, iw, ih)
+            preds = det.detect(frame)
+            used = set()
+            for cls, pb in [(p["cls"], p["box"]) for p in preds]:
+                best, bi = 0.0, -1
+                for gi, (gcls, gb) in enumerate(gts):
+                    if gi in used or gcls != cls:
+                        continue
+                    v = _iou_xyxy(pb, gb)
+                    if v > best:
+                        best, bi = v, gi
+                if best >= 0.5 and bi >= 0:
+                    used.add(bi)
+                    tp += 1
+                    per_cls.setdefault(cls, [0, 0, 0])[0] += 1
+                else:
+                    fp += 1
+                    per_cls.setdefault(cls, [0, 0, 0])[1] += 1
+            for gi, (gcls, _gb) in enumerate(gts):
+                if gi not in used:
+                    fn += 1
+                    per_cls.setdefault(gcls, [0, 0, 0])[2] += 1
+            peak = max(peak, proc.memory_info().rss)
         dt = time.perf_counter() - t0
-        out[f"fps_{size}"] = round(n / dt, 1)
-    out["peak_ram_mb"] = round(proc.memory_info().rss / 1e6, 1)
-    out["status"] = "measured"
+        out[f"imgsz_{imgsz}"] = {
+            "fps": round(len(imgs) / dt, 1),
+            "peak_ram_mb": round(peak / 1e6, 1),
+            "precision": round(100.0 * tp / (tp + fp), 1) if tp + fp else None,
+            "recall": round(100.0 * tp / (tp + fn), 1) if tp + fn else None,
+            "per_class": {c: {"precision": round(100.0 * v[0] / (v[0] + v[1]), 1)
+                              if v[0] + v[1] else None,
+                              "recall": round(100.0 * v[0] / (v[0] + v[2]), 1)
+                              if v[0] + v[2] else None}
+                          for c, v in per_cls.items()},
+        }
     return out
 
 
@@ -480,11 +548,21 @@ def write_report(r):
     L.append("## 6. Perception (CPU-only)\n")
     if p.get("status") == "skipped":
         L.append(f"Skipped: {p['reason']}. Reported automatically once the "
-                 "model is dropped into `models/`.\n")
+                 "weights and `data/dfki_test/images` exist.\n")
     else:
-        L.append(f"- FPS @640: {p.get('fps_640')}")
-        L.append(f"- FPS @416: {p.get('fps_416')}")
-        L.append(f"- peak RAM: {p.get('peak_ram_mb')} MB\n")
+        L.append(f"Weights: `{p['weights']}` · cpu_threads {p['cpu_threads']} "
+                 f"· {p['images']} test images · classes {p['classes']}\n")
+        for imgsz in (640, 416):
+            k = p.get(f"imgsz_{imgsz}")
+            if not k:
+                continue
+            L.append(f"**imgsz {imgsz}** — FPS {k['fps']}, peak RAM "
+                     f"{k['peak_ram_mb']} MB, precision {k['precision']}%, "
+                     f"recall {k['recall']}%")
+            for c, m in k["per_class"].items():
+                L.append(f"  - {c}: precision {m['precision']}%, "
+                         f"recall {m['recall']}%")
+        L.append("")
 
     L.append("## Known limits\n")
     L.append("- Flat-ground assumption (z = 0); craters are approximated.")

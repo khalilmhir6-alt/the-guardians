@@ -51,9 +51,12 @@
     "seed": 7
   },
   "yolo": {
-    "model_path": "models/best.onnx",
+    "weights": "models/best.pt",
+    "imgsz": 640,
     "conf_threshold": 0.25,
-    "threads": 2
+    "cpu_threads": 2,
+    "test_images": "data/dfki_test/images",
+    "test_labels": "data/dfki_test/labels"
   },
   "paths": {
     "frames_dir": "data/frames",

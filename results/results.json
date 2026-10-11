@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-10-11T03:51:29Z",
+  "generated_utc": "2026-10-11T04:15:06Z",
   "host": "win32",
   "python": "3.12.7",
   "codec": {
@@ -166,7 +166,7 @@
   },
   "perception": {
     "status": "skipped",
-    "reason": "no models/best.onnx or .pt yet"
+    "reason": "no model"
   },
-  "wall_seconds": 0.1
+  "wall_seconds": 0.0
 }
