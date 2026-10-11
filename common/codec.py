@@ -3,7 +3,9 @@ C.R.A.T.E.R. telemetry codec - 9-byte hazard packet.
 Pure Python standard library: no install needed.
 
 Layout (big-endian, 9 bytes = 72 bits):
-  byte 0     : type (2 bits) | confidence (4 bits) | spare (2 bits)
+  byte 0     : type (2 bits) | confidence (4 bits) | error class (2 bits)
+               error class (team choice): 0 = <0.5 m, 1 = <1 m,
+               2 = <2 m, 3 = >=2 m range-based localization uncertainty
   bytes 1-2  : x, signed, decimeters (10 cm steps) from landing site
   bytes 3-4  : y, signed, decimeters
   bytes 5-6  : rover time, seconds since mission start (wraps at 65536)
@@ -34,10 +36,11 @@ def _clamp_int16(v: int) -> int:
     return max(-32768, min(32767, v))
 
 
-def encode(kind: str, x_m: float, y_m: float, conf: float, t_s: float, seq: int) -> bytes:
-    """Hazard -> 9 bytes."""
+def encode(kind: str, x_m: float, y_m: float, conf: float, t_s: float,
+           seq: int, err_class: int = 0) -> bytes:
+    """Hazard -> 9 bytes. err_class fills the 2 spare bits (0..3)."""
     conf_q = max(0, min(15, round(conf * 15)))            # 0..15
-    head = (TYPES[kind] << 6) | (conf_q << 2)             # spare bits = 0
+    head = (TYPES[kind] << 6) | (conf_q << 2) | (err_class & 0x03)
     x_dm = _clamp_int16(round(x_m * 10))                  # meters -> decimeters
     y_dm = _clamp_int16(round(y_m * 10))
     body = BODY.pack(head, x_dm, y_dm, int(t_s) % 65536, seq % 256)
@@ -55,6 +58,7 @@ def decode(packet: bytes):
     return {
         "type": TYPE_NAMES[head >> 6],
         "conf": ((head >> 2) & 0x0F) / 15,
+        "err": head & 0x03,
         "x": x_dm / 10,
         "y": y_dm / 10,
         "t": t_s,

@@ -6,6 +6,7 @@ loop continues. All tunables come from config.json.
 import argparse
 import csv
 import logging
+import math
 import sys
 import time
 from logging.handlers import RotatingFileHandler
@@ -56,9 +57,15 @@ def main():
 
     detector = make_detector(cfg)
     rcfg = cfg["rover"]
+    lcfg = cfg.get("localization", {})
     tracker = Tracker(rcfg["track_iou_threshold"],
                       rcfg["track_confirm_hits"],
-                      rcfg["track_max_misses"])
+                      rcfg["track_max_misses"],
+                      max_report_range_m=rcfg.get("max_report_range_m", 8.0),
+                      min_merge_radius_m=lcfg.get("min_uncertainty_m", 0.5),
+                      pixel_noise_px=lcfg.get("pixel_noise_px", 3.0),
+                      camera_height_m=lcfg.get("camera_height_m", 0.4),
+                      cam=cfg["camera"])
     sender = Sender(cfg["link"]["host"], cfg["link"]["listen"],
                     repeats=rcfg["hazard_repeats"],
                     repeat_gap_s=rcfg["hazard_repeat_gap_s"],
@@ -81,9 +88,10 @@ def main():
     log_path = Path(cfg["paths"]["earth_log"]).parent / "rover_log.csv"
     log_csv = open(log_path, "w", newline="", encoding="utf-8")
     log_writer = csv.writer(log_csv)
-    log_writer.writerow(["mission_t", "kind", "x", "y", "conf", "seq"])
+    log_writer.writerow(["mission_t", "kind", "x", "y", "conf", "err", "seq"])
 
     start = time.monotonic()
+    last_status = 0.0
     n = 0
     running = True
     try:
@@ -99,7 +107,7 @@ def main():
             if frame_paths and cv2 is not None:
                 frame = cv2.imread(str(frame_paths[idx]))
 
-            pose = poses[idx] if poses else {
+            pose = poses[idx % len(poses)] if poses else {
                 "x": 0.0, "y": 0.2 * t_mission, "z": 0.4,
                 "yaw_deg": 0.0, "pitch_deg": 15.0}
 
@@ -107,17 +115,25 @@ def main():
                 dets = detector.detect(frame, frame_idx=idx)
                 positions = [localize_detection(d["box"], pose, cam)
                              for d in dets]
-                events = tracker.update(dets, positions)
+                ranges = [None if xy is None else
+                          math.hypot(xy[0] - pose["x"], xy[1] - pose["y"])
+                          for xy in positions]
+                events = tracker.update(dets, positions, ranges)
                 now = time.monotonic() - start
                 for ev in events:
                     sender.submit_hazard(ev["cls"], ev["x"], ev["y"],
-                                         ev["conf"], now)
+                                         ev["conf"], now, ev["err"], t_mission)
                     log_writer.writerow([f"{t_mission:.1f}", ev["cls"],
                                          f"{ev['x']:.2f}", f"{ev['y']:.2f}",
-                                         f"{ev['conf']:.2f}", sender.seq])
+                                         f"{ev['conf']:.2f}", ev["err"],
+                                         sender.seq])
                 sender.tick(now, pose["x"], pose["y"], pose["yaw_deg"],
                             t_mission)
                 log_csv.flush()
+                if now - last_status >= 10.0:
+                    log.info("status t=%.0fs frames=%d tracker=%s sender=%s",
+                             t_mission, n, tracker.stats, sender.stats)
+                    last_status = now
             except Exception:
                 log.exception("frame %d failed, continuing", n)
 

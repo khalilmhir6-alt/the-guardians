@@ -63,7 +63,7 @@
     <div class="legend">
       <span><span class="sw" style="background:#ff9f43"></span>rock</span>
       <span><span class="sw" style="background:#a55eea;background:transparent;border:2px solid #a55eea"></span>crater</span>
-      <span><span class="sw" style="background:rgba(143,183,255,.35)"></span>&plusmn;uncertainty</span>
+      <span><span class="sw" style="background:rgba(143,183,255,.35)"></span>&plusmn;range-based uncertainty</span>
     </div>
   </div>
 </div>
@@ -193,7 +193,9 @@ function draw() {
   if (state) for (const z of state.hazards) {
     const op = Math.max(0.15, Math.exp(-z.age_s / FADE_S));
     const x = sx(z.x, v), y = sy(z.y, v);
-    const r = (lastView ? lastView.uncertainty_radius_m : 0.5) * v.scale;
+    const ur = z.uncertainty_m != null ? z.uncertainty_m
+             : (lastView ? lastView.uncertainty_radius_m : 0.5);
+    const r = ur * v.scale;
     ctx.fillStyle = `rgba(143,183,255,${0.14 * op})`;
     ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
     ctx.strokeStyle = `rgba(143,183,255,${0.35 * op})`; ctx.lineWidth = 1;
@@ -228,6 +230,8 @@ canvas.addEventListener("mousemove", e => {
     tip.style.left = (mx + 14) + "px"; tip.style.top = (my + 10) + "px";
     tip.innerHTML = `<b>${hover.type}</b><br>pos (${hover.x.toFixed(2)}, ${hover.y.toFixed(2)}) m` +
                     `<br>confidence ${hover.conf.toFixed(2)}<br>age ${hover.age_s.toFixed(1)} s` +
+                    `<br>uncertainty ±${(hover.uncertainty_m != null ? hover.uncertainty_m : 0.5).toFixed(2)} m ` +
+                    `(class ${hover.err_class != null ? hover.err_class : 0})` +
                     `<br>rover t ${hover.t} s`;
   } else tip.style.display = "none";
 });

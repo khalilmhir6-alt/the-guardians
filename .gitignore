@@ -1,8 +1,8 @@
 .venv/
 __pycache__/
 *.pyc
-logs/*.csv
-logs/*.log
+logs/*
+!logs/.gitkeep
 data/frames/*.png
 models/*.onnx
 models/*.pt

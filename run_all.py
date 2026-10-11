@@ -90,6 +90,11 @@ def main():
         print("\n[run_all] Ctrl+C - stopping all children")
     finally:
         stopping = True
+        # Give children a moment to stop on their own (rover logs final stats).
+        grace = time.monotonic() + 4.0
+        while time.monotonic() < grace and any(
+                p.poll() is None for p in procs.values()):
+            time.sleep(0.2)
         for name, p in procs.items():
             if p.poll() is None:
                 p.terminate()

@@ -101,3 +101,35 @@ def heading_to_steps(heading_deg: float) -> int:
 def steps_to_heading(steps: int) -> float:
     """4-bit field -> heading in degrees (0..337.5)."""
     return (steps % 16) * 22.5
+
+
+# --- range-based localization error -----------------------------------------
+# The bottom-center back-projection error grows with range. First order
+# (ground point at horizontal range r, camera at height z, pixel noise dv):
+#     err ~= (r^2 + z^2) / z * (dv / fy)
+# This one estimate drives BOTH the rover's merge radius and the dashboard
+# uncertainty circle, carried over the link in the 2 spare bits of byte 0
+# quantized into 4 classes.
+ERROR_CLASS_BOUNDS_M = (0.5, 1.0, 2.0)      # <0.5, <1, <2, else >=2
+ERROR_CLASS_RADIUS_M = (0.5, 1.0, 2.0, 3.0)  # nominal radius per class
+
+
+def estimated_error(range_m: float, camera_height_m: float,
+                    pixel_noise_px: float, cam: dict) -> float:
+    """First-order ground-range error estimate (meters)."""
+    _, fy, _, _ = intrinsics(cam)
+    z = max(camera_height_m, 1e-3)
+    return (range_m * range_m + z * z) / z * (pixel_noise_px / fy)
+
+
+def error_class(err_m: float) -> int:
+    """Quantize an error estimate into the 2-bit packet field."""
+    for i, bound in enumerate(ERROR_CLASS_BOUNDS_M):
+        if err_m < bound:
+            return i
+    return 3
+
+
+def class_radius_m(err_class: int) -> float:
+    """2-bit error class -> nominal uncertainty radius for display."""
+    return ERROR_CLASS_RADIUS_M[min(max(int(err_class), 0), 3)]

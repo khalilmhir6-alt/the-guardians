@@ -22,8 +22,11 @@ log = logging.getLogger("crater.sender")
 class Sender:
     def __init__(self, host, port, repeats=3, repeat_gap_s=6.0,
                  heartbeat_period_s=2.0, max_packets_per_s=5,
-                 queue_size=64):
+                 queue_size=64, sink=None):
+        """sink: optional callable(bytes) used instead of UDP - tests
+        capture packets in-process without sockets."""
         self.addr = (host, port)
+        self.sink = sink
         self.repeats = repeats
         self.repeat_gap_s = repeat_gap_s
         self.heartbeat_period_s = heartbeat_period_s
@@ -40,12 +43,16 @@ class Sender:
 
     # ---------- public API ----------
 
-    def submit_hazard(self, kind, x, y, conf, t_now):
-        """Schedule `repeats` copies of a new hazard, spaced repeat_gap_s."""
+    def submit_hazard(self, kind, x, y, conf, t_now, err_class=0, t_mission=0.0):
+        """Schedule `repeats` copies of a new hazard, spaced repeat_gap_s.
+
+        Every copy carries the SAME rover mission time (t_mission) so Earth
+        can de-duplicate repeats by (type, x, y, rover_time)."""
         for i in range(self.repeats):
-            self._enqueue((t_now + i * self.repeat_gap_s, kind, x, y, conf))
-        log.info("hazard %s (%.2f, %.2f) conf=%.2f -> %d copies",
-                 kind, x, y, conf, self.repeats)
+            self._enqueue((t_now + i * self.repeat_gap_s, kind, x, y, conf,
+                           err_class, t_mission))
+        log.info("hazard %s (%.2f, %.2f) conf=%.2f err=%d -> %d copies",
+                 kind, x, y, conf, err_class, self.repeats)
 
     def tick(self, t_now, rover_x, rover_y, heading_deg, t_mission):
         """Send everything due, within the bandwidth budget."""
@@ -55,7 +62,8 @@ class Sender:
         remaining = self._budget()
         while remaining > 0 and self.queue and self.queue[0][0] <= t_now:
             due = self.queue.popleft()
-            self._send(due[1], due[2], due[3], due[4], t_mission, t_now)
+            self._send(due[1], due[2], due[3], due[4], due[6], t_now,
+                       due[5])
             sent.append(due)
             remaining -= 1
         # 2) heartbeat last: dropped when the budget is exhausted
@@ -64,7 +72,8 @@ class Sender:
         if t_now - self.last_heartbeat >= self.heartbeat_period_s:
             if remaining > 0:
                 hconf = heading_to_steps(heading_deg) / 15.0
-                self._send("heartbeat", rover_x, rover_y, hconf, t_mission, t_now)
+                self._send("heartbeat", rover_x, rover_y, hconf, t_mission,
+                           t_now, 0)
             else:
                 self.stats["heartbeats_dropped"] += 1
             self.last_heartbeat = t_now  # keep cadence even when skipped
@@ -94,10 +103,13 @@ class Sender:
         while self.sent_times and t_now - self.sent_times[0] >= 1.0:
             self.sent_times.popleft()
 
-    def _send(self, kind, x, y, conf, t_mission, t_now):
-        pkt = encode(kind, x, y, conf, t_mission, self.seq)
+    def _send(self, kind, x, y, conf, t_mission, t_now, err_class=0):
+        pkt = encode(kind, x, y, conf, t_mission, self.seq, err_class)
         try:
-            self.sock.sendto(pkt, self.addr)
+            if self.sink is not None:
+                self.sink(pkt)
+            else:
+                self.sock.sendto(pkt, self.addr)
         except OSError as e:
             log.error("send failed: %s", e)
             return

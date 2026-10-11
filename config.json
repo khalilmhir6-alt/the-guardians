@@ -20,7 +20,13 @@
     "queue_size": 64,
     "track_iou_threshold": 0.3,
     "track_confirm_hits": 3,
-    "track_max_misses": 5
+    "track_max_misses": 5,
+    "max_report_range_m": 8.0
+  },
+  "localization": {
+    "pixel_noise_px": 3.0,
+    "min_uncertainty_m": 0.5,
+    "camera_height_m": 0.4
   },
   "earth": {
     "listen": 9001,

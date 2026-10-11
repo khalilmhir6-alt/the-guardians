@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from common.codec import decode          # noqa: E402
 from common.config import load_config    # noqa: E402
-from rover.localize import steps_to_heading  # noqa: E402
+from rover.localize import steps_to_heading, class_radius_m  # noqa: E402
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -80,6 +80,7 @@ class EarthState:
             self.stats["hazards"] += 1
             self.hazards.append({"type": pkt["type"], "x": pkt["x"],
                                  "y": pkt["y"], "conf": pkt["conf"],
+                                 "err": pkt.get("err", 0),
                                  "t": pkt["t"], "seq": pkt["seq"],
                                  "arrival": wall})
             if len(self.hazards) > self.max_hazards:
@@ -93,6 +94,9 @@ class EarthState:
             for h in self.hazards:
                 hazards.append({**{k: h[k] for k in
                                    ("type", "x", "y", "conf", "t", "seq")},
+                                "err_class": h.get("err", 0),
+                                "uncertainty_m": class_radius_m(
+                                    h.get("err", 0)),
                                 "age_s": round(wall - h["arrival"], 3)})
             hb = None
             if self.heartbeat:
@@ -163,8 +167,9 @@ def main():
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_csv = open(log_path, "w", newline="", encoding="utf-8")
     log_writer = csv.writer(log_csv)
-    log_writer.writerow(["arrival_wall", "type", "x", "y", "conf",
+    log_writer.writerow(["arrival_wall", "type", "x", "y", "conf", "err",
                          "rover_t", "seq"])
+    log_csv.flush()
 
     udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp.bind((cfg["link"]["host"], ecfg["listen"]))
@@ -191,8 +196,8 @@ def main():
             if pkt is not None:
                 log_writer.writerow([f"{wall:.3f}", pkt["type"],
                                      f"{pkt['x']:.1f}", f"{pkt['y']:.1f}",
-                                     f"{pkt['conf']:.2f}", pkt["t"],
-                                     pkt["seq"]])
+                                     f"{pkt['conf']:.2f}", pkt.get("err", 0),
+                                     pkt["t"], pkt["seq"]])
                 log_csv.flush()
     except KeyboardInterrupt:
         print("\n[earth] stopped.")
