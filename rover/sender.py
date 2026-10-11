@@ -9,6 +9,7 @@
   hazards. Sequence number increments on every packet actually sent,
   including repeats.
 """
+import bisect
 import collections
 import logging
 import socket
@@ -31,7 +32,7 @@ class Sender:
         self.repeat_gap_s = repeat_gap_s
         self.heartbeat_period_s = heartbeat_period_s
         self.max_packets_per_s = max_packets_per_s
-        self.queue = collections.deque(maxlen=queue_size)
+        self.queue = []            # kept sorted by due time (item[0])
         self.queue_size = queue_size
         self.seq = 0
         self.sent_times = collections.deque()  # sliding 1 s window
@@ -61,7 +62,7 @@ class Sender:
         # 1) due hazard copies first (never dropped for bandwidth)
         remaining = self._budget()
         while remaining > 0 and self.queue and self.queue[0][0] <= t_now:
-            due = self.queue.popleft()
+            due = self.queue.pop(0)
             self._send(due[1], due[2], due[3], due[4], due[6], t_now,
                        due[5])
             sent.append(due)
@@ -88,13 +89,14 @@ class Sender:
     # ---------- internals ----------
 
     def _enqueue(self, item):
+        """Insert ordered by due time (item[0]) so an early repeat never
+        head-of-line blocks a hazard copy that is due sooner."""
         if len(self.queue) >= self.queue_size:
-            # Queue full: make room by dropping the OLDEST hazard copy,
-            # log loudly (flight software: never silent).
-            self.queue.popleft()
+            # Queue full: drop the most-overdue copy, log loudly.
+            self.queue.pop(0)
             self.stats["hazards_dropped"] += 1
             log.error("sender queue full - dropped oldest hazard copy")
-        self.queue.append(item)
+        bisect.insort(self.queue, item, key=lambda x: x[0])
 
     def _budget(self):
         return max(0, self.max_packets_per_s - len(self.sent_times))

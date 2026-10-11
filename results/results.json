@@ -1,0 +1,172 @@
+{
+  "generated_utc": "2026-10-11T03:51:29Z",
+  "host": "win32",
+  "python": "3.12.7",
+  "codec": {
+    "packet_size_bytes": 9,
+    "json_size_bytes": 76,
+    "compression_ratio": 8.44,
+    "roundtrip_max_position_error_m": 0.04,
+    "corrupt_rejected": 72,
+    "corrupt_tested": 72,
+    "corrupt_reject_pct": 100.0,
+    "error_class_roundtrip_ok": true
+  },
+  "link_survival": [
+    {
+      "loss": 0.0,
+      "blackouts": "no",
+      "repeats": 1,
+      "hazards": 16,
+      "delivered": 16,
+      "delivery_pct": 100.0
+    },
+    {
+      "loss": 0.0,
+      "blackouts": "no",
+      "repeats": 3,
+      "hazards": 16,
+      "delivered": 16,
+      "delivery_pct": 100.0
+    },
+    {
+      "loss": 0.0,
+      "blackouts": "yes",
+      "repeats": 1,
+      "hazards": 16,
+      "delivered": 15,
+      "delivery_pct": 93.8
+    },
+    {
+      "loss": 0.0,
+      "blackouts": "yes",
+      "repeats": 3,
+      "hazards": 16,
+      "delivered": 16,
+      "delivery_pct": 100.0
+    },
+    {
+      "loss": 0.1,
+      "blackouts": "no",
+      "repeats": 1,
+      "hazards": 16,
+      "delivered": 13,
+      "delivery_pct": 81.2
+    },
+    {
+      "loss": 0.1,
+      "blackouts": "no",
+      "repeats": 3,
+      "hazards": 16,
+      "delivered": 16,
+      "delivery_pct": 100.0
+    },
+    {
+      "loss": 0.1,
+      "blackouts": "yes",
+      "repeats": 1,
+      "hazards": 16,
+      "delivered": 12,
+      "delivery_pct": 75.0
+    },
+    {
+      "loss": 0.1,
+      "blackouts": "yes",
+      "repeats": 3,
+      "hazards": 16,
+      "delivered": 16,
+      "delivery_pct": 100.0
+    },
+    {
+      "loss": 0.3,
+      "blackouts": "no",
+      "repeats": 1,
+      "hazards": 16,
+      "delivered": 7,
+      "delivery_pct": 43.8
+    },
+    {
+      "loss": 0.3,
+      "blackouts": "no",
+      "repeats": 3,
+      "hazards": 16,
+      "delivered": 14,
+      "delivery_pct": 87.5
+    },
+    {
+      "loss": 0.3,
+      "blackouts": "yes",
+      "repeats": 1,
+      "hazards": 16,
+      "delivered": 7,
+      "delivery_pct": 43.8
+    },
+    {
+      "loss": 0.3,
+      "blackouts": "yes",
+      "repeats": 3,
+      "hazards": 16,
+      "delivered": 14,
+      "delivery_pct": 87.5
+    }
+  ],
+  "localize": {
+    "source": "synthetic fallback (data/ not generated)",
+    "roundtrip_max_error_m": "1.11e-14",
+    "roundtrip_under_1cm": true,
+    "montecarlo_vs_formula": [
+      {
+        "range_m": 2.0,
+        "measured_err_m": 0.06,
+        "formula_err_m": 0.073,
+        "ratio": 0.82
+      },
+      {
+        "range_m": 5.0,
+        "measured_err_m": 0.368,
+        "formula_err_m": 0.442,
+        "ratio": 0.83
+      },
+      {
+        "range_m": 8.0,
+        "measured_err_m": 0.884,
+        "formula_err_m": 1.128,
+        "ratio": 0.78
+      }
+    ],
+    "detections_matched": 866,
+    "gt_mean_error_m": 0.3401,
+    "gt_max_error_m": 1.9341
+  },
+  "tracker": {
+    "persistent_tracks_confirmed": 2,
+    "expected_persistent": 2,
+    "tentative_tracks_killed": 2,
+    "one_frame_fp_reported": 0,
+    "duplicates_caused_extra_report": 0,
+    "dedupe_two_close_hazards_reported": 1,
+    "dedupe_expected": 1,
+    "iou_ok": true
+  },
+  "end_to_end": {
+    "source": "synthetic fallback (data/ not generated)",
+    "ground_truth_hazards": 23,
+    "rover_confirmed_events": 16,
+    "earth_unique_hazards": 16,
+    "matched_shown_or_gt": 16,
+    "gt_recall_pct": 69.6,
+    "precision_pct": 100.0,
+    "mean_age_at_arrival_s": 1.12,
+    "packets_sent": 93,
+    "binary_bytes": 837,
+    "json_bytes": 8182,
+    "bytes_ratio": 9.78,
+    "duplicate_suppressed": 23,
+    "range_gated_frames": 355
+  },
+  "perception": {
+    "status": "skipped",
+    "reason": "no models/best.onnx or .pt yet"
+  },
+  "wall_seconds": 0.1
+}

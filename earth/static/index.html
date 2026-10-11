@@ -28,6 +28,17 @@
   .legend { display: flex; gap: 14px; align-items: center; margin-top: 6px; color: #9aa4b5; }
   .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
                 margin-right: 5px; vertical-align: -1px; }
+  .howto { color: #9aa4b5; font-size: 11px; line-height: 1.6; margin-top: 8px;
+           border: 1px solid #232a3a; border-radius: 6px; padding: 8px 10px; }
+  .howto .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+               margin-right: 5px; vertical-align: -1px; }
+  .howto b { color: #d7dde8; font-weight: 600; }
+  #hazList { margin-top: 8px; }
+  #hazList .hrow { display: flex; justify-content: space-between; gap: 8px;
+                   padding: 3px 0; border-top: 1px solid #1c2333; }
+  #hazList .hrow .v { color: #9aa4b5; font-variant-numeric: tabular-nums;
+                      font-size: 12px; }
+  #hazList .empty { color: #5c6577; font-size: 12px; padding: 4px 0; }
   #tip { position: absolute; pointer-events: none; display: none;
          background: #1a2030; border: 1px solid #35405a; border-radius: 6px;
          padding: 7px 10px; font-size: 12px; z-index: 5; max-width: 220px; }
@@ -63,8 +74,14 @@
     <div class="legend">
       <span><span class="sw" style="background:#ff9f43"></span>rock</span>
       <span><span class="sw" style="background:#a55eea;background:transparent;border:2px solid #a55eea"></span>crater</span>
-      <span><span class="sw" style="background:rgba(143,183,255,.35)"></span>&plusmn;range-based uncertainty</span>
     </div>
+    <div class="howto">
+      <div><span class="sw" style="background:#ff9f43"></span>rock &nbsp;
+           <span class="sw" style="background:transparent;border:2px solid #a55eea"></span>crater</div>
+      <div><b>fresh</b> = bright &middot; <b>old</b> = faded (min 40%)</div>
+      <div>thin circle = position uncertainty (&plusmn;m, from range)</div>
+    </div>
+    <div id="hazList"></div>
   </div>
 </div>
 <footer>landing site (0,0) &middot; flat-ground assumption &middot; opacity fades with data age &middot; polls /state every 500 ms</footer>
@@ -117,21 +134,37 @@ function updatePanel() {
   document.getElementById("rovHead").textContent = hb ? hb.heading_deg.toFixed(1) + "°" : "—";
   document.getElementById("hbAge").textContent = hb ? fmtAge(hb.age_s) : "—";
   document.getElementById("hazCount").textContent = state.hazards.length;
+  const list = document.getElementById("hazList");
+  const sorted = state.hazards.slice().sort(
+    (a, b) => (a.age_s ?? 1e9) - (b.age_s ?? 1e9));   // newest first
+  list.innerHTML = sorted.length ? sorted.map(z => {
+    const ur = (z.uncertainty_m != null ? z.uncertainty_m : 0.5).toFixed(2);
+    const pos = `(${z.x.toFixed(1)}, ${z.y.toFixed(1)})`;
+    return `<div class="hrow"><span>${z.type}</span>` +
+           `<span class="v">${pos} &middot; ${z.age_s.toFixed(1)}s &middot; &plusmn;${ur} m</span></div>`;
+  }).join("") : `<div class="empty">no hazards yet</div>`;
   document.getElementById("clock").textContent = "server " + new Date(state.server_time * 1000).toLocaleTimeString();
 }
 
 function fitView() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  let minX = -2, maxX = 2, minY = -2, maxY = 4;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   const grow = (x, y) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x);
                            minY = Math.min(minY, y); maxY = Math.max(maxY, y); };
+  grow(0, 0);                                  // always keep landing site in view
   trail.forEach(p => grow(p.x, p.y));
   if (state) {
     state.hazards.forEach(z => grow(z.x, z.y));
     if (state.heartbeat) grow(state.heartbeat.x, state.heartbeat.y);
   }
-  const pad = 2;
-  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  if (!isFinite(minX)) { minX = -2; maxX = 2; minY = -2; maxY = 4; }
+  // keep a sane minimum span so a single point doesn't over-zoom
+  const MIN_SPAN = 8;
+  let spanX = maxX - minX, spanY = maxY - minY;
+  if (spanX < MIN_SPAN) { const c = (minX + maxX) / 2; minX = c - MIN_SPAN / 2; maxX = c + MIN_SPAN / 2; spanX = MIN_SPAN; }
+  if (spanY < MIN_SPAN) { const c = (minY + maxY) / 2; minY = c - MIN_SPAN / 2; maxY = c + MIN_SPAN / 2; spanY = MIN_SPAN; }
+  const margin = Math.max(1.0, 0.06 * Math.max(spanX, spanY));   // small margin
+  minX -= margin; maxX += margin; minY -= margin; maxY += margin;
   const scale = Math.min(w / (maxX - minX), h / (maxY - minY));
   const ox = (w - (maxX - minX) * scale) / 2 - minX * scale;
   const oy = (h - (maxY - minY) * scale) / 2 + maxY * scale;
@@ -191,23 +224,23 @@ function draw() {
   // hazards
   const now = state ? state.server_time : 0;
   if (state) for (const z of state.hazards) {
-    const op = Math.max(0.15, Math.exp(-z.age_s / FADE_S));
+    const op = Math.max(0.4, Math.exp(-z.age_s / FADE_S));   // never below 40%
     const x = sx(z.x, v), y = sy(z.y, v);
     const ur = z.uncertainty_m != null ? z.uncertainty_m
              : (lastView ? lastView.uncertainty_radius_m : 0.5);
     const r = ur * v.scale;
-    ctx.fillStyle = `rgba(143,183,255,${0.14 * op})`;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-    ctx.strokeStyle = `rgba(143,183,255,${0.35 * op})`; ctx.lineWidth = 1;
-    ctx.stroke();
+    // uncertainty: thin outline only, no fill
+    ctx.strokeStyle = `rgba(143,183,255,${Math.min(0.85, 0.4 + 0.45 * op)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
     if (z.type === "crater") {
-      ctx.strokeStyle = `rgba(165,94,234,${op})`; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.stroke();
+      ctx.strokeStyle = `rgba(165,94,234,${op})`; ctx.lineWidth = 3.5;
+      ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.stroke();
     } else {
       ctx.fillStyle = `rgba(255,159,67,${op})`;
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
-        const t = Math.PI / 3 * i + 0.4, rr = i % 2 ? 4.5 : 6.5;
+        const t = Math.PI / 3 * i + 0.4, rr = i % 2 ? 6.5 : 9.5;
         ctx[i ? "lineTo" : "moveTo"](x + rr * Math.cos(t), y + rr * Math.sin(t));
       }
       ctx.closePath(); ctx.fill();
@@ -223,7 +256,7 @@ canvas.addEventListener("mousemove", e => {
   const mx = e.clientX - rect.left, my = e.clientY - rect.top;
   hover = null;
   for (const z of state.hazards) {
-    if (Math.hypot(sx(z.x, v) - mx, sy(z.y, v) - my) < 10) { hover = z; break; }
+    if (Math.hypot(sx(z.x, v) - mx, sy(z.y, v) - my) < 14) { hover = z; break; }
   }
   if (hover) {
     tip.style.display = "block";
