@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+logs/*.csv
+logs/*.log
+data/frames/*.png
+models/*.onnx
+models/*.pt
+.DS_Store

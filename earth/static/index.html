@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>C.R.A.T.E.R. — Lunar Hazard Dashboard</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0b0e14; color: #d7dde8;
+         font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+         display: flex; flex-direction: column; height: 100vh; }
+  header { padding: 10px 16px; background: #121722; border-bottom: 1px solid #232a3a;
+           display: flex; align-items: baseline; gap: 14px; }
+  header h1 { margin: 0; font-size: 16px; letter-spacing: .12em; color: #8fb7ff; }
+  header .sub { color: #7c8698; font-size: 12px; }
+  #wrap { flex: 1; display: flex; min-height: 0; }
+  #mapbox { flex: 1; position: relative; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #panel { width: 300px; background: #121722; border-left: 1px solid #232a3a;
+           padding: 14px 16px; overflow-y: auto; }
+  #panel h2 { font-size: 12px; margin: 14px 0 6px; color: #7c8698;
+              text-transform: uppercase; letter-spacing: .1em; }
+  #panel h2:first-child { margin-top: 0; }
+  .row { display: flex; justify-content: space-between; padding: 3px 0; }
+  .row .v { color: #d7dde8; font-variant-numeric: tabular-nums; }
+  #linkState { font-size: 15px; font-weight: 600; padding: 6px 8px; border-radius: 6px;
+               background: #1a2030; margin-bottom: 8px; text-align: center; }
+  .ok   { color: #7ee787; } .amber { color: #f0b429; } .red { color: #ff6b6b; }
+  .legend { display: flex; gap: 14px; align-items: center; margin-top: 6px; color: #9aa4b5; }
+  .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+                margin-right: 5px; vertical-align: -1px; }
+  #tip { position: absolute; pointer-events: none; display: none;
+         background: #1a2030; border: 1px solid #35405a; border-radius: 6px;
+         padding: 7px 10px; font-size: 12px; z-index: 5; max-width: 220px; }
+  footer { padding: 6px 16px; background: #121722; border-top: 1px solid #232a3a;
+           color: #5c6577; font-size: 11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>C.R.A.T.E.R.</h1>
+  <span class="sub">lunar scout &mdash; hazard map &middot; permanently shadowed crater</span>
+  <span class="sub" id="clock" style="margin-left:auto"></span>
+</header>
+<div id="wrap">
+  <div id="mapbox">
+    <canvas id="map"></canvas>
+    <div id="tip"></div>
+  </div>
+  <div id="panel">
+    <h2>Link</h2>
+    <div id="linkState">&hellip;</div>
+    <div class="row"><span>Last packet</span><span class="v" id="lastPkt">&mdash;</span></div>
+    <div class="row"><span>Delivery</span><span class="v" id="delivery">&mdash;</span></div>
+    <div class="row"><span>Packets lost (est.)</span><span class="v" id="lost">&mdash;</span></div>
+    <div class="row"><span>Corrupted rejected</span><span class="v" id="corrupt">&mdash;</span></div>
+    <div class="row"><span>Duplicates removed</span><span class="v" id="dups">&mdash;</span></div>
+    <h2>Rover</h2>
+    <div class="row"><span>Position</span><span class="v" id="rovPos">&mdash;</span></div>
+    <div class="row"><span>Heading</span><span class="v" id="rovHead">&mdash;</span></div>
+    <div class="row"><span>Heartbeat age</span><span class="v" id="hbAge">&mdash;</span></div>
+    <h2>Hazards</h2>
+    <div class="row"><span>Shown</span><span class="v" id="hazCount">&mdash;</span></div>
+    <div class="legend">
+      <span><span class="sw" style="background:#ff9f43"></span>rock</span>
+      <span><span class="sw" style="background:#a55eea;background:transparent;border:2px solid #a55eea"></span>crater</span>
+      <span><span class="sw" style="background:rgba(143,183,255,.35)"></span>&plusmn;uncertainty</span>
+    </div>
+  </div>
+</div>
+<footer>landing site (0,0) &middot; flat-ground assumption &middot; opacity fades with data age &middot; polls /state every 500 ms</footer>
+<script>
+"use strict";
+const POLL_MS = 500, FADE_S = 45;
+const canvas = document.getElementById("map"), ctx = canvas.getContext("2d");
+const tip = document.getElementById("tip");
+let state = null, trail = [], hover = null, lastView = null;
+
+async function poll() {
+  try {
+    const r = await fetch("/state", {cache: "no-store"});
+    state = await r.json();
+    if (state.heartbeat) {
+      const p = state.heartbeat;
+      const last = trail[trail.length - 1];
+      if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 0.02) {
+        trail.push({x: p.x, y: p.y});
+        if (trail.length > 2000) trail.shift();
+      }
+    }
+    updatePanel();
+  } catch (e) { /* earth not up yet; keep last state */ }
+}
+setInterval(poll, POLL_MS); poll();
+
+function fmtAge(a) { return a == null ? "—" : a < 100 ? a.toFixed(1) + " s" : (a/60).toFixed(1) + " min"; }
+function updatePanel() {
+  if (!state) return;
+  const s = state.stats, v = state.view || {stale_amber_s:3, stale_red_s:10, uncertainty_radius_m:0.5};
+  lastView = v;
+  const age = s.last_packet_age_s;
+  const el = document.getElementById("linkState");
+  let cls = "ok", txt = "LINK UP";
+  if (age == null) { cls = "red"; txt = "NO SIGNAL"; }
+  else if (age > v.stale_red_s) { cls = "red"; txt = "DEAD LINK"; }
+  else if (age > v.stale_amber_s) {
+    cls = "amber";
+    txt = state.heartbeat ? "QUIET (no recent packets)" : "STALE";
+  }
+  el.className = cls; el.textContent = txt;
+  document.getElementById("lastPkt").textContent = fmtAge(age);
+  document.getElementById("delivery").textContent = s.delivery_pct + "%";
+  document.getElementById("lost").textContent = s.lost_est ?? "—";
+  document.getElementById("corrupt").textContent = s.corrupted;
+  document.getElementById("dups").textContent = s.duplicates;
+  const hb = state.heartbeat;
+  document.getElementById("rovPos").textContent = hb ? `(${hb.x.toFixed(1)}, ${hb.y.toFixed(1)}) m` : "—";
+  document.getElementById("rovHead").textContent = hb ? hb.heading_deg.toFixed(1) + "°" : "—";
+  document.getElementById("hbAge").textContent = hb ? fmtAge(hb.age_s) : "—";
+  document.getElementById("hazCount").textContent = state.hazards.length;
+  document.getElementById("clock").textContent = "server " + new Date(state.server_time * 1000).toLocaleTimeString();
+}
+
+function fitView() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  let minX = -2, maxX = 2, minY = -2, maxY = 4;
+  const grow = (x, y) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+                           minY = Math.min(minY, y); maxY = Math.max(maxY, y); };
+  trail.forEach(p => grow(p.x, p.y));
+  if (state) {
+    state.hazards.forEach(z => grow(z.x, z.y));
+    if (state.heartbeat) grow(state.heartbeat.x, state.heartbeat.y);
+  }
+  const pad = 2;
+  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  const scale = Math.min(w / (maxX - minX), h / (maxY - minY));
+  const ox = (w - (maxX - minX) * scale) / 2 - minX * scale;
+  const oy = (h - (maxY - minY) * scale) / 2 + maxY * scale;
+  return {scale, ox, oy, w, h};
+}
+const sx = (x, v) => v.ox + x * v.scale;
+const sy = (y, v) => v.oy - y * v.scale;
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr; canvas.height = h * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const v = fitView();
+
+  ctx.strokeStyle = "#1c2333"; ctx.fillStyle = "#4a5468";
+  ctx.font = "10px sans-serif"; ctx.lineWidth = 1;
+  const step = v.scale < 14 ? 5 : 1;
+  for (let x = Math.ceil((v.ox / v.scale - 100) / step) * step; sx(x, v) < w; x += step) {
+    if (sx(x, v) < 0) continue;
+    ctx.beginPath(); ctx.moveTo(sx(x, v), 0); ctx.lineTo(sx(x, v), h); ctx.stroke();
+    ctx.fillText(x + " m", sx(x, v) + 3, h - 6);
+  }
+  for (let y = Math.ceil(((v.oy - h) / v.scale - 100) / step) * step; sy(y, v) > 0; y += step) {
+    if (sy(y, v) > h) continue;
+    ctx.beginPath(); ctx.moveTo(0, sy(y, v)); ctx.lineTo(w, sy(y, v)); ctx.stroke();
+    ctx.fillText(y + " m", 4, sy(y, v) - 3);
+  }
+
+  // landing site (0,0)
+  const lx = sx(0, v), ly = sy(0, v);
+  ctx.strokeStyle = "#8fb7ff"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(lx - 9, ly); ctx.lineTo(lx + 9, ly);
+  ctx.moveTo(lx, ly - 9); ctx.lineTo(lx, ly + 9); ctx.stroke();
+  ctx.fillStyle = "#8fb7ff"; ctx.fillText("LANDING SITE (0,0)", lx + 12, ly + 4);
+
+  // rover trail + rover
+  if (trail.length > 1) {
+    ctx.strokeStyle = "rgba(143,183,255,.45)"; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    trail.forEach((p, i) => i ? ctx.lineTo(sx(p.x, v), sy(p.y, v))
+                              : ctx.moveTo(sx(p.x, v), sy(p.y, v)));
+    ctx.stroke();
+  }
+  if (state && state.heartbeat) {
+    const hb = state.heartbeat, rx = sx(hb.x, v), ry = sy(hb.y, v);
+    const a = hb.heading_deg * Math.PI / 180;           // 0 = +y = up
+    ctx.save(); ctx.translate(rx, ry); ctx.rotate(a);
+    ctx.fillStyle = "#7ee787";
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(7, 8); ctx.lineTo(0, 4); ctx.lineTo(-7, 8);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+
+  // hazards
+  const now = state ? state.server_time : 0;
+  if (state) for (const z of state.hazards) {
+    const op = Math.max(0.15, Math.exp(-z.age_s / FADE_S));
+    const x = sx(z.x, v), y = sy(z.y, v);
+    const r = (lastView ? lastView.uncertainty_radius_m : 0.5) * v.scale;
+    ctx.fillStyle = `rgba(143,183,255,${0.14 * op})`;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = `rgba(143,183,255,${0.35 * op})`; ctx.lineWidth = 1;
+    ctx.stroke();
+    if (z.type === "crater") {
+      ctx.strokeStyle = `rgba(165,94,234,${op})`; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.stroke();
+    } else {
+      ctx.fillStyle = `rgba(255,159,67,${op})`;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const t = Math.PI / 3 * i + 0.4, rr = i % 2 ? 4.5 : 6.5;
+        ctx[i ? "lineTo" : "moveTo"](x + rr * Math.cos(t), y + rr * Math.sin(t));
+      }
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+canvas.addEventListener("mousemove", e => {
+  if (!state) return;
+  const rect = canvas.getBoundingClientRect(), v = fitView();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  hover = null;
+  for (const z of state.hazards) {
+    if (Math.hypot(sx(z.x, v) - mx, sy(z.y, v) - my) < 10) { hover = z; break; }
+  }
+  if (hover) {
+    tip.style.display = "block";
+    tip.style.left = (mx + 14) + "px"; tip.style.top = (my + 10) + "px";
+    tip.innerHTML = `<b>${hover.type}</b><br>pos (${hover.x.toFixed(2)}, ${hover.y.toFixed(2)}) m` +
+                    `<br>confidence ${hover.conf.toFixed(2)}<br>age ${hover.age_s.toFixed(1)} s` +
+                    `<br>rover t ${hover.t} s`;
+  } else tip.style.display = "none";
+});
+canvas.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+{
+  "detector": "fake",
+  "link": {
+    "host": "127.0.0.1",
+    "listen": 9000,
+    "forward": 9001,
+    "loss": 0.1,
+    "blackout_every_s": 30,
+    "blackout_for_s": 5,
+    "seed": 42
+  },
+  "rover": {
+    "out_host": "127.0.0.1",
+    "out_port": 9000,
+    "fps": 2.0,
+    "heartbeat_period_s": 2.0,
+    "hazard_repeats": 3,
+    "hazard_repeat_gap_s": 6.0,
+    "max_packets_per_s": 5,
+    "queue_size": 64,
+    "track_iou_threshold": 0.3,
+    "track_confirm_hits": 3,
+    "track_max_misses": 5
+  },
+  "earth": {
+    "listen": 9001,
+    "http_host": "127.0.0.1",
+    "http_port": 8080,
+    "uncertainty_radius_m": 0.5,
+    "stale_amber_s": 3.0,
+    "stale_red_s": 10.0
+  },
+  "camera": {
+    "focal_mm": 24.0,
+    "sensor_width_mm": 36.0,
+    "width_px": 640,
+    "height_px": 640
+  },
+  "detector_fake": {
+    "base_conf": 0.85,
+    "pixel_noise_px": 3.0,
+    "miss_prob": 0.05,
+    "false_positive_prob": 0.05,
+    "false_positive_conf": 0.45,
+    "seed": 7
+  },
+  "yolo": {
+    "model_path": "models/best.onnx",
+    "conf_threshold": 0.25,
+    "threads": 2
+  },
+  "paths": {
+    "frames_dir": "data/frames",
+    "poses_csv": "data/poses.csv",
+    "rocks_csv": "data/rocks.csv",
+    "camera_json": "data/camera.json",
+    "earth_log": "logs/earth_log.csv"
+  }
+}

@@ -1,0 +1,7 @@
+# Perception-side dependencies only (rover side).
+# Link, Earth receiver and dashboard use the Python standard library only.
+ultralytics>=8.3.0
+onnxruntime>=1.19.0
+opencv-python>=4.10.0
+numpy>=1.26.0
+psutil>=6.0.0
