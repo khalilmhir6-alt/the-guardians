@@ -39,7 +39,7 @@ LCFG = CFG["localization"]
 
 def data_source(detector):
     return "synthetic fallback (data/ not generated)" if detector.synthetic \
-        else "Blender data/ (real scene)"
+        else "recorded data/ (real scene)"
 
 
 # ---------------------------------------------------------------- 1. codec

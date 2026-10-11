@@ -86,8 +86,8 @@ uncertainty-ring / fade / list dashboard presentation; all thresholds and rates 
 `tests/run_tests.py` writes `results/test_report.md` and `results/results.json`. Every
 number in this README comes from that run; nothing is asserted without a measured value.
 Scene-dependent tests report their **data source** at the top of the report (currently the
-synthetic fallback, because `data/` is produced later by `blender/make_scene.py`; when
-Blender data exists the same tests run against it with no code change).
+synthetic fallback, because no ground-truth `data/rocks.csv` is shipped; when recorded
+ground truth exists the same tests run against it with no code change).
 
 Perception FPS/RAM and per-class precision/recall are reported automatically only when
 `yolo.weights` exists **and** `data/dfki_test/images` is present; the group then measures

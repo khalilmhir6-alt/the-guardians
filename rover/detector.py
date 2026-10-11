@@ -97,7 +97,7 @@ class FakeDetector(Detector):
 
     @staticmethod
     def _synthetic_scene():
-        """Same shape as the Blender scene: straight 0.2 m/s path, 60 s,
+        """Synthetic scene for the fallback: straight 0.2 m/s path, 60 s,
         2 fps, camera 0.4 m high pitched 15 deg down, ~20 seeded rocks."""
         rng = random.Random(1234)
         rocks = []

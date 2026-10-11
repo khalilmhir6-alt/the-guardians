@@ -1,6 +1,6 @@
 # C.R.A.T.E.R. — automated test report
 
-Generated 2026-10-11T05:07:12Z · Python 3.12.7 · win32 · wall 0.1 s
+Generated 2026-10-11T05:15:14Z · Python 3.12.7 · win32 · wall 0.1 s
 
 **Data source for scene-dependent tests:** synthetic fallback (data/ not generated)
 
